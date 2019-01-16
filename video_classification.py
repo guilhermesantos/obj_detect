@@ -30,10 +30,13 @@ while(True):
 	end = time.time()
 
 	print('Tempo de predicao: {:.5}'.format(end-start))
+	print(preds.shape)
 
-	idxs = np.argsort(preds[0])[::-1][:5]
-	print('Classe', classes[idxs[0]], 'Probabilidade', preds[0][idxs[0]]*100)
-
+	most_likely_classes = np.argsort(preds[0])[::-1][:5]
+	first_most_likely = most_likely_classes[0]
+	print('Classe mais provavel: ', classes[first_most_likely], 'Probabilidade: ', preds[0][first_most_likely]*100)
+	class_labels = [classes[i] for i in most_likely_classes]
+	print('Demais classes: ', class_labels)
 	if(cv2.waitKey(1) & 0xFF == ord('q')):
 		break
 

@@ -12,26 +12,36 @@ def load_net(model_id):
 	model = dict()
 
 	if(model_id == 1):
-		directory += 'ssd_mobilenet1/'
+		directory += 'mobnetssd1/'
 		model_file = directory+'MobileNetSSD_deploy.caffemodel'
 		prototxt = directory+'MobileNetSSD_deploy.prototxt.txt'
 		net = cv2.dnn.readNetFromCaffe(prototxt, model_file)	
 
+		classes = ["background", "aeroplane", "bicycle", "bird", "boat",
+	    "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
+	    "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
+	    "sofa", "train", "tvmonitor"]
+
 	elif(model_id == 2):
-		directory += 'ssd_mobilenet2/'
+		directory += 'mobnetssd2/'
 		frozen_graph = directory+'frozen_inference_graph.pb'
 		graph_config = directory+'graph.pbtxt'
 		net = cv2.dnn.readNetFromTensorflow(frozen_graph, graph_config)
+	
+		classes = []
+		with open('labels.txt') as f:
+			data = f.read()
+			rows = data.split('\n')
+			split_rows = [row.split() for row in rows]
+			classes = [line[2] for line in split_rows]
+
 	else:
 		exit()
 	
 	model['net'] = net	
 	model['id'] = model_id
 
-	classes = ["background", "aeroplane", "bicycle", "bird", "boat",
-	    "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
-	    "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
-	    "sofa", "train", "tvmonitor"]
+
 	colors = np.random.uniform(0, 255, size=(len(classes), 3))
 
 
@@ -57,7 +67,7 @@ def detect(image, classes, colors, model):
 	start = time.time()
 	detections = net.forward()
 	end = time.time()
-	#print('Tempo de predicao: {:.5}'.format(end-start))
+	print('Tempo de inferencia: {:.5}%'.format(end-start))
 	
 	bounding_boxes = []
 	labels = []
@@ -73,7 +83,7 @@ def detect(image, classes, colors, model):
 
 			#Indice da classe (p/ descoberta do label e da cor)
 			class_index = int(detections[0, 0, i, 1])
-			print('class index')
+			print('class index', class_index)
 			class_indexes.append(class_index)
 
 			#Numeros que representan a bounding box
@@ -105,18 +115,25 @@ def main():
 			start_x, start_y, end_x, end_y = box
 
 			#Desenha um retangulo na regiao da bounding box
-			cv2.rectangle(image, (start_x, start_y), (end_x, end_y), (255, 0, 0), 2)
+			cv2.rectangle(image, (start_x, start_y), (end_x, end_y), colors[class_index-1], 2)
 
 			#Usa o indice para pegar o label da classe e monta o texto que vai aparecer no quadro 
-			#class_label = classes[class_index]
-			#output_label = '{} {:.2f}%'.format(class_label, confidence*100)
+
 			#print('Detection: '+output_label)
 
 			#Texto que sera colocado na bounding box
-			#text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
 
-			#cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
-            	#colors[class_index], 2)
+			if(model['id'] == 1):
+				class_label = classes[class_index]
+				output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
+
+			else:
+				class_label = classes[class_index-1]
+				output_label = '{} {}'.format(class_index, class_label)
+
+			text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
+			cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
+            	colors[class_index-1], 2)
 
 		cv2.imshow('Detection', image)
 
