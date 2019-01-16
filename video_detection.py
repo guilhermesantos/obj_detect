@@ -98,16 +98,12 @@ def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-m', dest='model', required=True, help='Especificar o modelo v1, v2')
 	args = vars(parser.parse_args())
-	print(args['model'])
 
 	classes, colors, model = load_net(int(args['model']))
 
 	capture = cv2.VideoCapture(0)
 	while(True):
 		ret, image = capture.read()
-		#rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-		#cv2.imshow('frame', frame)
-
 		boxes, class_indexes, confidences = detect(image, classes, colors, model)
 
 		for box, class_index, confidence in zip(boxes, class_indexes, confidences):
@@ -117,19 +113,14 @@ def main():
 			#Desenha um retangulo na regiao da bounding box
 			cv2.rectangle(image, (start_x, start_y), (end_x, end_y), colors[class_index-1], 2)
 
-			#Usa o indice para pegar o label da classe e monta o texto que vai aparecer no quadro 
-
-			#print('Detection: '+output_label)
-
 			#Texto que sera colocado na bounding box
-
 			if(model['id'] == 1):
 				class_label = classes[class_index]
 				output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
 			else:
 				class_label = classes[class_index-1]
-				output_label = '{} {}'.format(class_index, class_label)
+				output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
 			text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
 			cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
