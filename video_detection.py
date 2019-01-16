@@ -4,6 +4,7 @@ import time
 import matplotlib.pyplot as plt
 import glob
 import argparse
+import os
 
 def load_net(model_id):
 	directory = 'models/object-detection-deep-learning/'
@@ -34,7 +35,7 @@ def load_net(model_id):
 			rows = data.split('\n')
 			split_rows = [row.split() for row in rows]
 			classes = [line[2] for line in split_rows]
-
+		
 	else:
 		exit()
 	
@@ -47,13 +48,12 @@ def load_net(model_id):
 
 	return classes, colors, model
 
-def detect(image, classes, colors, model, measurements):
+def detect(image, classes, colors, model):
 	conf_thresh = 0.2
 
 	h, w = image.shape[:2]
 	
 	image = cv2.resize(image, (300,300))
-
 
 	model_id = model['id']
 	net = model['net']
@@ -67,8 +67,8 @@ def detect(image, classes, colors, model, measurements):
 	start = time.time()
 	detections = net.forward()
 	end = time.time()
-	print('Tempo de inferencia: {:.5}%'.format(end-start))
-	measurements.append(end-start)
+	#print('Tempo de inferencia: {:.5}'.format(end-start))
+	elapsed = end-start
 	
 	bounding_boxes = []
 	labels = []
@@ -84,7 +84,7 @@ def detect(image, classes, colors, model, measurements):
 
 			#Indice da classe (p/ descoberta do label e da cor)
 			class_index = int(detections[0, 0, i, 1])
-			print('class index', class_index)
+
 			class_indexes.append(class_index)
 
 			#Numeros que representan a bounding box
@@ -93,48 +93,88 @@ def detect(image, classes, colors, model, measurements):
 			#Converte numeros da bounding box em coordenadas da imagem
 			bounding_boxes.append(bnd_box.astype('int'))
 
-	return bounding_boxes, class_indexes, confidences
+	return bounding_boxes, class_indexes, confidences, elapsed
 
-def main():
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-m', dest='model', required=True, help='Especificar o modelo v1, v2')
-	args = vars(parser.parse_args())
+def draw_boxes(image, model, classes, box, class_index, colors, confidence):
+	start_x, start_y, end_x, end_y = box
 
-	classes, colors, model = load_net(int(args['model']))
-	measurements = []
+	#Desenha um retangulo na regiao da bounding box
+	cv2.rectangle(image, (start_x, start_y), (end_x, end_y), colors[class_index-1], 2)
 
-	capture = cv2.VideoCapture(0)
-	while(True):
-		ret, image = capture.read()
-		boxes, class_indexes, confidences = detect(image, classes, colors, model, measurements)
+	#Texto que sera colocado na bounding box
+	if(model['id'] == 1):
+		class_label = classes[class_index]
+		output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
-		for box, class_index, confidence in zip(boxes, class_indexes, confidences):
+	else:
+		class_label = classes[class_index-1]
+		output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
-			start_x, start_y, end_x, end_y = box
-
-			#Desenha um retangulo na regiao da bounding box
-			cv2.rectangle(image, (start_x, start_y), (end_x, end_y), colors[class_index-1], 2)
-
-			#Texto que sera colocado na bounding box
-			if(model['id'] == 1):
-				class_label = classes[class_index]
-				output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
-
-			else:
-				class_label = classes[class_index-1]
-				output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
-
-			text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
-			cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
+	text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
+	cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
             	colors[class_index-1], 2)
 
+	return image
+
+def parse_commandline():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-m', dest='model', type=int, required=True, help='Especificar o modelo v1, v2')
+	
+	parser.add_argument('-f', dest='file', required=False)
+	args = vars(parser.parse_args())
+	return args
+
+def record_measurements(measurements, model):
+	measure_file = 'measurement_m{}.dat'.format(model['id'])
+	print('writing to {}'.format(measure_file))
+
+	if(os.path.exists(measure_file)):
+		os.remove(measure_file)
+	
+	content = ''
+	for measurement in measurements:
+		content += str(measurement)+'\n'			
+
+	with open(measure_file, 'w') as f:
+		f.write(content)
+
+	
+def detect_and_measure(classes, colors, model, video_file=None):
+	if(video_file == None):
+		capture = cv2.VideoCapture(0)
+	else:
+		capture = cv2.VideoCapture(video_file)
+	
+	measurements = []
+
+	while(capture.isOpened()):
+		ret, image = capture.read()
+		boxes, class_indexes, confidences, elapsed = detect(image, classes, colors, model)
+		measurements.append(elapsed)
+
+		for box, class_index, confidence in zip(boxes, class_indexes, confidences):
+			draw_boxes(image, model, classes, box, class_index, colors, confidence)
+		
+		image = cv2.resize(image, (1000,500))
 		cv2.imshow('Detection', image)
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
 
+		if(len(measurements) % 100 == 0):
+			record_measurements(measurements, model)
+			break
+
 	capture.release()
 	cv2.destroyAllWindows()
-	print('forcing git to upload this file as')
+
+def main():
+	args = parse_commandline()
+	print(args['model'])	
+	print(args['file'])
+
+	classes, colors, model = load_net(args['model'])
+
+	detect_and_measure(classes, colors, model, args['file'])
 
 main()
