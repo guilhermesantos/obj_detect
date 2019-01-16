@@ -47,7 +47,7 @@ def load_net(model_id):
 
 	return classes, colors, model
 
-def detect(image, classes, colors, model):
+def detect(image, classes, colors, model, measurements):
 	conf_thresh = 0.2
 
 	h, w = image.shape[:2]
@@ -68,6 +68,7 @@ def detect(image, classes, colors, model):
 	detections = net.forward()
 	end = time.time()
 	print('Tempo de inferencia: {:.5}%'.format(end-start))
+	measurements.append(end-start)
 	
 	bounding_boxes = []
 	labels = []
@@ -100,11 +101,12 @@ def main():
 	args = vars(parser.parse_args())
 
 	classes, colors, model = load_net(int(args['model']))
+	measurements = []
 
 	capture = cv2.VideoCapture(0)
 	while(True):
 		ret, image = capture.read()
-		boxes, class_indexes, confidences = detect(image, classes, colors, model)
+		boxes, class_indexes, confidences = detect(image, classes, colors, model, measurements)
 
 		for box, class_index, confidence in zip(boxes, class_indexes, confidences):
 
