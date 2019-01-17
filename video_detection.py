@@ -6,6 +6,15 @@ import glob
 import argparse
 import os
 
+def load_coco_classes():
+	classes = []
+	with open('labels.txt') as f:
+		data = f.read()
+		rows = data.split('\n')
+		split_rows = [row.split() for row in rows]
+		classes = [line[2] for line in split_rows]
+	return classes
+
 def load_net(model_id):
 	directory = 'models/object-detection-deep-learning/'
 
@@ -13,6 +22,7 @@ def load_net(model_id):
 	model = dict()
 
 	if(model_id == 1):
+		model['name'] = 'MobileNet-SSD v1 Tutorial'
 		directory += 'mobnetssd1/'
 		model_file = directory+'MobileNetSSD_deploy.caffemodel'
 		prototxt = directory+'MobileNetSSD_deploy.prototxt.txt'
@@ -24,17 +34,20 @@ def load_net(model_id):
 	    "sofa", "train", "tvmonitor"]
 
 	elif(model_id == 2):
+		model['name'] = 'MobiletNet-SSD v1 Coco'
+		directory += 'mobnetssd1_alt/'
+		frozen_graph = directory+'frozen_inference_graph.pb'
+		config = directory+'graph.pbtxt'
+		net = cv2.dnn.readNetFromTensorflow(frozen_graph, config)
+		classes = load_coco_classes()
+
+	elif(model_id == 3):
+		model['name'] = 'MobiletNet-SSD v2 Coco'
 		directory += 'mobnetssd2/'
 		frozen_graph = directory+'frozen_inference_graph.pb'
 		graph_config = directory+'graph.pbtxt'
 		net = cv2.dnn.readNetFromTensorflow(frozen_graph, graph_config)
-	
-		classes = []
-		with open('labels.txt') as f:
-			data = f.read()
-			rows = data.split('\n')
-			split_rows = [row.split() for row in rows]
-			classes = [line[2] for line in split_rows]
+		classes = load_coco_classes()
 		
 	else:
 		exit()
@@ -44,7 +57,6 @@ def load_net(model_id):
 
 
 	colors = np.random.uniform(0, 255, size=(len(classes), 3))
-
 
 	return classes, colors, model
 
@@ -125,7 +137,8 @@ def parse_commandline():
 	return args
 
 def record_measurements(measurements, model):
-	measure_file = 'measurement_m{}.dat'.format(model['id'])
+	measure_file = '{}.dat'.format(model['name'])
+	print('{} measurements collected'.format(len(measurements)))
 	print('writing to {}'.format(measure_file))
 
 	if(os.path.exists(measure_file)):
