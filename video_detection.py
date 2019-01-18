@@ -20,6 +20,7 @@ def load_net(model_id):
 
 	net = None
 	model = dict()
+	classes = []
 
 	if(model_id == 1):
 		model['name'] = 'MobileNet-SSD v1 Tutorial'
@@ -28,7 +29,7 @@ def load_net(model_id):
 		prototxt = directory+'MobileNetSSD_deploy.prototxt.txt'
 		net = cv2.dnn.readNetFromCaffe(prototxt, model_file)	
 
-		classes = ["background", "aeroplane", "bicycle", "bird", "boat",
+		model['classes'] = ["background", "aeroplane", "bicycle", "bird", "boat",
 	    "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
 	    "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
 	    "sofa", "train", "tvmonitor"]
@@ -39,7 +40,7 @@ def load_net(model_id):
 		frozen_graph = directory+'frozen_inference_graph.pb'
 		config = directory+'graph.pbtxt'
 		net = cv2.dnn.readNetFromTensorflow(frozen_graph, config)
-		classes = load_coco_classes()
+		model['classes'] = load_coco_classes()
 
 	elif(model_id == 3):
 		model['name'] = 'MobiletNet-SSD v2 Coco'
@@ -47,20 +48,15 @@ def load_net(model_id):
 		frozen_graph = directory+'frozen_inference_graph.pb'
 		graph_config = directory+'graph.pbtxt'
 		net = cv2.dnn.readNetFromTensorflow(frozen_graph, graph_config)
-		classes = load_coco_classes()
-		
-	else:
-		exit()
+		model['classes'] = load_coco_classes()
 	
 	model['net'] = net	
 	model['id'] = model_id
+	model['colors'] = np.random.uniform(0, 255, size=(len(model['classes']), 3))
 
+	return model
 
-	colors = np.random.uniform(0, 255, size=(len(classes), 3))
-
-	return classes, colors, model
-
-def detect(image, classes, colors, model):
+def detect(model, image):
 	conf_thresh = 0.2
 
 	h, w = image.shape[:2]
@@ -107,36 +103,38 @@ def detect(image, classes, colors, model):
 
 	return bounding_boxes, class_indexes, confidences, elapsed
 
-def draw_boxes(image, model, classes, box, class_index, colors, confidence):
+def draw_boxes(model, image, box, class_index, confidence):
 	start_x, start_y, end_x, end_y = box
 
 	#Desenha um retangulo na regiao da bounding box
-	cv2.rectangle(image, (start_x, start_y), (end_x, end_y), colors[class_index-1], 2)
+	cv2.rectangle(image, (start_x, start_y), (end_x, end_y), model['colors'][class_index-1], 2)
 
 	#Texto que sera colocado na bounding box
 	if(model['id'] == 1):
-		class_label = classes[class_index]
+		class_label = model['classes'][class_index]
 		output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
 	else:
-		class_label = classes[class_index-1]
+		class_label = model['classes'][class_index-1]
 		output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
 	text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
+
+
 	cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
-            	colors[class_index-1], 2)
+            	model['colors'][class_index-1], 2)
 
 	return image
 
 def parse_commandline():
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-m', dest='model', type=int, required=True, help='Especificar o modelo v1, v2')
+	parser.add_argument('-m', dest='model', type=int, required=False, help='Especificar o modelo v1, v2')
 	
 	parser.add_argument('-f', dest='file', required=False)
 	args = vars(parser.parse_args())
 	return args
 
-def record_measurements(measurements, model):
+def record_measurements(model, measurements):
 	measure_file = '{}.dat'.format(model['name'])
 	print('{} measurements collected'.format(len(measurements)))
 	print('writing to {}'.format(measure_file))
@@ -152,7 +150,7 @@ def record_measurements(measurements, model):
 		f.write(content)
 
 	
-def detect_and_measure(classes, colors, model, video_file=None):
+def detect_and_measure(model, video_file=None):
 	if(video_file == None):
 		capture = cv2.VideoCapture(0)
 	else:
@@ -162,11 +160,11 @@ def detect_and_measure(classes, colors, model, video_file=None):
 
 	while(capture.isOpened()):
 		ret, image = capture.read()
-		boxes, class_indexes, confidences, elapsed = detect(image, classes, colors, model)
+		boxes, class_indexes, confidences, elapsed = detect(model, image)
 		measurements.append(elapsed)
 
 		for box, class_index, confidence in zip(boxes, class_indexes, confidences):
-			draw_boxes(image, model, classes, box, class_index, colors, confidence)
+			draw_boxes(model, image, box, class_index, confidence)
 		
 		image = cv2.resize(image, (1000,500))
 		cv2.imshow('Detection', image)
@@ -175,7 +173,7 @@ def detect_and_measure(classes, colors, model, video_file=None):
 			break
 
 		if(len(measurements) % 100 == 0):
-			record_measurements(measurements, model)
+			record_measurements(model, measurements)
 			break
 
 	capture.release()
@@ -186,8 +184,8 @@ def main():
 	print(args['model'])	
 	print(args['file'])
 
-	classes, colors, model = load_net(args['model'])
+	model = load_net(args['model'])
 
-	detect_and_measure(classes, colors, model, args['file'])
+	detect_and_measure(model, args['file'])
 
-main()
+#main()
