@@ -1,10 +1,10 @@
 import cv2
 import numpy as np
 import time
-import matplotlib.pyplot as plt
 import glob
 import argparse
 import os
+import json
 
 def load_coco_classes():
 	classes = []
@@ -20,7 +20,6 @@ def load_net(model_id):
 
 	net = None
 	model = dict()
-	classes = []
 
 	if(model_id == 1):
 		model['name'] = 'MobileNet-SSD v1 Tutorial'
@@ -56,136 +55,212 @@ def load_net(model_id):
 
 	return model
 
-def detect(model, image):
+def parse_detections(image, predictions, image_id=None):
+	objects = []
 	conf_thresh = 0.2
-
 	h, w = image.shape[:2]
-	
-	image = cv2.resize(image, (300,300))
 
+	for i in np.arange(0, predictions.shape[2]):
+
+    	#Confianca da predicao
+		confidence = predictions[0, 0, i, 2]
+
+		if(confidence > conf_thresh):
+
+			#Indice da classe (p/ descoberta do label e da cor)
+			class_index = int(predictions[0, 0, i, 1])
+
+			#Numeros que representan a bounding box			
+			bnd_box = predictions[0, 0, i, 3:7] 
+			bnd_box = bnd_box * np.array([w, h, w, h])
+			start_x = float(bnd_box[0])
+			start_y = float(bnd_box[1])
+			end_x = float(bnd_box[2])
+			end_y = float(bnd_box[3])
+
+			width = float(end_x-start_x)
+			height = float(end_y-start_y)
+
+			detection = {
+				'category_id': int(class_index),
+				'bbox': [start_x, start_y, width, height],
+				'score': float(confidence)
+			}
+
+			if(image_id != None):
+				detection['image_id'] = int(image_id)
+
+			objects.append(detection)
+
+	return objects
+
+def detect(model, image, image_id=None):
 	model_id = model['id']
 	net = model['net']
 	
 	if(model_id == 1):	
-		blob = cv2.dnn.blobFromImage(image, 0.007843, (300, 300), 127.5)
+		blob = cv2.dnn.blobFromImage(cv2.resize(image, (300,300)), 0.007843, (300, 300), 127.5)
 	else:	
-		blob = cv2.dnn.blobFromImage(image, size=(300, 300), swapRB=True, crop=False)
+		blob = cv2.dnn.blobFromImage(cv2.resize(image, (300,300)), size=(300, 300), swapRB=True, crop=False)
 	
 	net.setInput(blob)
 	start = time.time()
 	detections = net.forward()
 	end = time.time()
-	#print('Tempo de inferencia: {:.5}'.format(end-start))
-	elapsed = end-start
+
+	time_elapsed = end-start
 	
-	bounding_boxes = []
-	labels = []
-	class_indexes = []
-	confidences = []
-	for i in np.arange(0, detections.shape[2]):
+	objects = parse_detections(image, detections, image_id)
 
-        	#Confianca da predicao
-		confidence = detections[0, 0, i, 2]
-		confidences.append(confidence)
+	return objects, time_elapsed
 
-		if(confidence > conf_thresh):
-
-			#Indice da classe (p/ descoberta do label e da cor)
-			class_index = int(detections[0, 0, i, 1])
-
-			class_indexes.append(class_index)
-
-			#Numeros que representan a bounding box
-			bnd_box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-
-			#Converte numeros da bounding box em coordenadas da imagem
-			bounding_boxes.append(bnd_box.astype('int'))
-
-	return bounding_boxes, class_indexes, confidences, elapsed
-
-def draw_boxes(model, image, box, class_index, confidence):
-	start_x, start_y, end_x, end_y = box
-
+def draw_boxes(model, image, objects):
 	#Desenha um retangulo na regiao da bounding box
-	cv2.rectangle(image, (start_x, start_y), (end_x, end_y), model['colors'][class_index-1], 2)
+	for detected in objects:
+		class_index = detected['category_id']
+		confidence = detected['score']
+		start_x, start_y, width, height = detected['bbox']
+		end_x = start_x + width
+		end_y = start_y + height
 
-	#Texto que sera colocado na bounding box
-	if(model['id'] == 1):
-		class_label = model['classes'][class_index]
-		output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
+		cv2.rectangle(image, (int(start_x), int(start_y)), (int(end_x), int(end_y)), model['colors'][class_index-1], 2)
 
-	else:
-		class_label = model['classes'][class_index-1]
-		output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
+		#Texto que sera colocado na bounding box
+		if(model['id'] == 1):
+			class_label = model['classes'][class_index]
+			output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
 
-	text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
+		else:
+			class_label = model['classes'][class_index-1]
+			output_label = '{} {} {:.2f}%'.format(class_index, class_label, confidence*100)
+
+		text_y = start_y - 15 if start_y-15 > 15 else start_y + 15
 
 
-	cv2.putText(image, output_label, (start_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
-            	model['colors'][class_index-1], 2)
+		cv2.putText(image, output_label, (int(start_x), int(text_y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
+	            	model['colors'][class_index-1], 2)
 
 	return image
 
-def parse_commandline():
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-m', dest='model', type=int, required=False, help='Especificar o modelo v1, v2')
-	
-	parser.add_argument('-f', dest='file', required=False)
-	args = vars(parser.parse_args())
-	return args
-
-def record_measurements(model, measurements):
-	measure_file = '{}.dat'.format(model['name'])
-	print('{} measurements collected'.format(len(measurements)))
+def record_time(model, time_measurements, test_name):
+	measure_file = 'benchmark/time_{}_{}.dat'.format(model['name'], test_name)
+	print('{} measurements collected'.format(len(time_measurements)))
 	print('writing to {}'.format(measure_file))
 
 	if(os.path.exists(measure_file)):
 		os.remove(measure_file)
 	
 	content = ''
-	for measurement in measurements:
-		content += str(measurement)+'\n'			
+	for measurement in time_measurements:
+		content += str(measurement)+'\n'
 
 	with open(measure_file, 'w') as f:
 		f.write(content)
 
-	
-def detect_and_measure(model, video_file=None):
+def record_detections(model, detections, test_name):
+	detection_file = './benchmark/detections_{}_{}.json'.format(model['name'], test_name)
+	if(os.path.exists(detection_file)):
+		os.remove(detection_file)
+
+	with open(detection_file, 'wt') as f:
+		print('dumping json to', detection_file)
+		json.dump(detections, f)
+
+def record_test_output(model, measurements, detections, test_name):
+	record_time(model, measurements, test_name)
+	record_detections(model, detections, test_name)
+
+def detect_from_video(model, video_file=None):
 	if(video_file == None):
 		capture = cv2.VideoCapture(0)
+		test_name = 'webcam'
 	else:
 		capture = cv2.VideoCapture(video_file)
-	
-	measurements = []
+		test_name = 'video_file'
 
+	time_measurements = []
+	detections = []
 	while(capture.isOpened()):
 		ret, image = capture.read()
-		boxes, class_indexes, confidences, elapsed = detect(model, image)
-		measurements.append(elapsed)
 
-		for box, class_index, confidence in zip(boxes, class_indexes, confidences):
-			draw_boxes(model, image, box, class_index, confidence)
-		
+		objects, time_elapsed = detect(model, image)
+		time_measurements.append(time_elapsed)
+
+		for detection in objects:
+			detections.append(detection)
+
+		draw_boxes(model, image, objects)
 		image = cv2.resize(image, (1000,500))
 		cv2.imshow('Detection', image)
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
 
-		if(len(measurements) % 100 == 0):
-			record_measurements(model, measurements)
+		if(len(time_measurements)  > 1000):
+			record_test_output(model, time_measurements, detections, test_name)
 			break
 
 	capture.release()
-	cv2.destroyAllWindows()
+	cv2.destroyAllWindows()	
+
+def detect_from_dataset(model, folder):
+	if(folder == None):
+		print('Please specify the dataset folder')
+		exit()
+	else:
+		files = os.listdir(folder)
+		file_num = len(files)
+		
+		detections = []
+		time_measurements = []
+
+		for i, image_file in enumerate(files):
+			image = cv2.imread(folder+image_file)
+			image_id = int(image_file.strip('0')[:image_file.rfind('.')].strip('.jpg'))
+			objects, elapsed = detect(model=model, image=image, image_id=image_id)
+
+			for detection in objects:
+				detections.append(detection)
+			time_measurements.append(elapsed)
+
+			if(i % 500 == 0):
+				print('Progress: {}%'.format((i/file_num)*100))
+		
+		record_test_output(model, time_measurements, detections, 'dataset')
+
+
+def parse_commandline():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-m', dest='model', type=int, required=False, help='Specify model')
+	
+	parser.add_argument('-s', dest='source', required=False, help='Specify source type')
+
+	parser.add_argument('-f', dest='file', required=False, help='Specify input file')
+
+	args = vars(parser.parse_args())
+	return args
 
 def main():
 	args = parse_commandline()
 	print(args['model'])	
+	print(args['source'])
 	print(args['file'])
 
-	model = load_net(args['model'])
+	if(args['model'] < 4):
+		model = load_net(args['model'])
 
-	detect_and_measure(model, args['file'])
+	if(args['source'] == 'webcam'):
+		detect_from_video(model, None)
+	if(args['source'] == 'video'):
+		if(args['file'] == None):
+			print('Specify video file with -f')
+		else:
+			detect_from_video(model, args['file'])
+			
+	elif(args['source'] == 'data'):
+		detect_from_dataset(model, args['file'])
+	else:
+		print('Unknown source type. Valid options: video, data')
 
-#main()
+if __name__ == '__main__':
+	main()
