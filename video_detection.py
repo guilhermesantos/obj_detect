@@ -5,6 +5,8 @@ import glob
 import argparse
 import os
 import json
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 def load_coco_classes():
 	classes = []
@@ -34,7 +36,7 @@ def load_net(model_id):
 	    "sofa", "train", "tvmonitor"]
 
 	elif(model_id == 2):
-		model['name'] = 'MobiletNet-SSD v1 Coco'
+		model['name'] = 'MobileNet-SSD v1 Coco'
 		directory += 'mobnetssd1_alt/'
 		frozen_graph = directory+'frozen_inference_graph.pb'
 		config = directory+'graph.pbtxt'
@@ -42,7 +44,7 @@ def load_net(model_id):
 		model['classes'] = load_coco_classes()
 
 	elif(model_id == 3):
-		model['name'] = 'MobiletNet-SSD v2 Coco'
+		model['name'] = 'MobileNet-SSD v2 Coco'
 		directory += 'mobnetssd2/'
 		frozen_graph = directory+'frozen_inference_graph.pb'
 		graph_config = directory+'graph.pbtxt'
@@ -145,7 +147,7 @@ def draw_boxes(model, image, objects):
 def record_time(model, time_measurements, test_name):
 	measure_file = 'benchmark/time_{}_{}.dat'.format(model['name'], test_name)
 	print('{} measurements collected'.format(len(time_measurements)))
-	print('writing to {}'.format(measure_file))
+	print('writing time measurement results to {}'.format(measure_file))
 
 	if(os.path.exists(measure_file)):
 		os.remove(measure_file)
@@ -163,12 +165,40 @@ def record_detections(model, detections, test_name):
 		os.remove(detection_file)
 
 	with open(detection_file, 'wt') as f:
-		print('dumping json to', detection_file)
+		print('Dumping detection results to', detection_file)
 		json.dump(detections, f)
 
-def record_test_output(model, measurements, detections, test_name):
-	record_time(model, measurements, test_name)
+
+def record_coco_output(model, test_name):
+	detection_file = 'benchmark/detections_{}_{}.json'.format(model['name'], test_name)
+	coco_out_file = 'benchmark/coco_{}_{}.dat'.format(model['name'], test_name)
+
+	annotations = './dataset/val2017/annotations/instances_val2017.json'
+	annotation_types = ['bbox']
+
+	coco_gt = COCO(annotations)
+	dataset = coco_gt.loadRes(detection_file)
+	coco_eval = COCOeval(coco_gt, dataset, annotation_types[0])
+	coco_eval.evaluate()
+	coco_eval.accumulate()
+	coco_eval.summarize()
+
+	out = ''
+	for result in coco_eval.stats:
+		out += str(result)+'\n'
+	print('resulting file content', out)
+
+	if(os.path.exists(coco_out_file)):
+		os.remove(coco_out_file)
+
+	with open(coco_out_file, 'wt') as f:
+		f.write(out)
+
+def record_test_output(model, time_measurements, detections, test_name):
+	record_time(model, time_measurements, test_name)
 	record_detections(model, detections, test_name)
+	if(test_name == 'dataset'):
+		record_coco_output(model, test_name)
 
 def detect_from_video(model, video_file=None):
 	if(video_file == None):
@@ -213,6 +243,7 @@ def detect_from_dataset(model, folder):
 		
 		detections = []
 		time_measurements = []
+		print('Model {} - Dataset accuracy evaluation'.format(model['name']))
 
 		for i, image_file in enumerate(files):
 			image = cv2.imread(folder+image_file)
@@ -255,9 +286,8 @@ def main():
 		if(args['file'] == None):
 			print('Specify video file with -f')
 		else:
-			detect_from_video(model, args['file'])
-			
-	elif(args['source'] == 'data'):
+			detect_from_video(model, args['file'])	
+	elif(args['source'] == 'dataset'):
 		detect_from_dataset(model, args['file'])
 	else:
 		print('Unknown source type. Valid options: video, data')
