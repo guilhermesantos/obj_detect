@@ -225,8 +225,10 @@ def detect_from_video(model, video_file=None):
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
+		if(len(time_measurements) % 100 == 0):
+			print('Recordings:', len(time_measurements))
 
-		if(len(time_measurements)  > 1000):
+		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
 			break
 
