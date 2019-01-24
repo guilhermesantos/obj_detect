@@ -5,6 +5,9 @@ import glob
 import argparse
 import os
 import json
+import matplotlib.pyplot as plt
+import operator
+from functools import reduce
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
@@ -200,7 +203,36 @@ def record_test_output(model, time_measurements, detections, test_name):
 	if(test_name == 'dataset'):
 		record_coco_output(model, test_name)
 
+def count_objects(model, objects):
+	obj_count = dict()
+	for detection in objects:
+		cat = model['classes'][detection['category_id']-1]
+		if(cat in obj_count):
+			obj_count[cat] += 1
+		else:
+			obj_count[cat] = 1
+	print(obj_count)
+
+	return obj_count
+
+def accumulate_counts(obj_counts):
+	total_count = dict()
+
+	for counts in obj_counts:
+		for key in counts.keys():
+			if(key in total_count.keys()):
+				total_count[key] += counts[key]
+			else:
+				total_count[key] = counts[key]
+
+	return total_count
+
+
 def detect_from_video(model, video_file=None):
+	starting_time = time.time()
+	cur_time = time.time()
+	last_rec_time = time.time()
+
 	if(video_file == None):
 		capture = cv2.VideoCapture(0)
 		test_name = 'webcam'
@@ -210,14 +242,22 @@ def detect_from_video(model, video_file=None):
 
 	time_measurements = []
 	detections = []
+	obj_count_per_time = []
+
 	while(capture.isOpened()):
 		ret, image = capture.read()
-
 		objects, time_elapsed = detect(model, image)
 		time_measurements.append(time_elapsed)
 
 		for detection in objects:
 			detections.append(detection)
+
+		cur_time = time.time()
+		if(cur_time-last_rec_time >= 1):
+			video_time = int(cur_time-starting_time)
+			obj_count_per_time.append(count_objects(model, objects))
+			last_rec_time = time.time()
+			print('count at time {}:'.format(video_time), obj_count_per_time[-1])
 
 		draw_boxes(model, image, objects)
 		image = cv2.resize(image, (1000,500))
@@ -225,8 +265,37 @@ def detect_from_video(model, video_file=None):
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
-		if(len(time_measurements) % 100 == 0):
+		if(len(time_measurements) % 30 == 0):
 			print('Recordings:', len(time_measurements))
+
+			result = accumulate_counts(obj_count_per_time)
+			sorted_result = sorted(result.items(), key=operator.itemgetter(1))
+
+			print('result', result)
+			print('sorted result', sorted_result)
+			print('objetos mais frequentes', [item[0] for item in sorted_result[-1:-4:-1]])
+			print('numero de contagens feitas', len(obj_count_per_time))
+			num_series = 3
+			num_intervals = 4
+			interval_size = int(len(obj_count_per_time)/num_intervals)
+			print('tamanho de cada intervalo', interval_size)
+
+			count_series = np.zeros(shape=(num_series, num_intervals), dtype=np.int32)
+			most_frequent = sorted_result[-1:-4:-1]
+
+			print('series example',[time[most_frequent[object_index][0]] if most_frequent[object_index][0] in time else 0 for time 					in  obj_count_per_time[0::interval_size] for object_index in range(num_series)])
+			for obj, count in  most_frequent:
+				print('obj', obj, 'count', count)
+				for i in range(0, len(obj_count_per_time), interval_size):
+					print('i', i)
+					if(obj in obj_count_per_time[i]):
+						print('count at time i', obj_count_per_time[i][obj])
+					else:
+						print('count at time i', 0)
+			fig, axis = plt.subplots(1, 2)
+			axis[0].bar(list(result.keys()), list(result.values()), color='g')
+			plt.show()
+
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
