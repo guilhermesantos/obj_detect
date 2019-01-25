@@ -277,13 +277,12 @@ def get_obj_count_for_current_time(model, objects, starting_time, last_rec_time,
 		video_time = int(cur_time-starting_time)
 		obj_count_per_time[video_time] = (count_objects(model, objects))
 		last_rec_time = time.time()
-		print('count at time {}:'.format(video_time), obj_count_per_time[list(obj_count_per_time.keys())[-1]])
+		#print('count at time {}:'.format(video_time), obj_count_per_time[list(obj_count_per_time.keys())[-1]])
 
 	return starting_time, last_rec_time, obj_count_per_time
 
-def draw_special_detection_region(image, start_x, start_y, end_x, end_y):
-	cv2.rectangle(image, (int(start_x), int(start_y)), (int(end_x), int(end_y)), (0,0,255), -1)
-	return image
+#def count_objects_in_special_region(region, objects)
+
 
 def detect_from_video(model, video_file=None):
 	plt.ion()
@@ -317,10 +316,12 @@ def detect_from_video(model, video_file=None):
 		starting_time, last_rec_time, obj_count_per_time = get_obj_count_for_current_time(model, objects, starting_time, 				last_rec_time, obj_count_per_time)
 
 
+		region = ((400, 200), (600, 300))
 
 		draw_boxes(model, image, objects)
 		image = cv2.resize(image, (1000,500))
-		image = draw_special_detection_region(image, 500, 250, 400, 100)
+	
+		cv2.rectangle(image, *region, (0,0,0), -1)
 
 		cv2.imshow('Detection', image)
 
@@ -394,7 +395,7 @@ def main():
 	elif(args['source'] == 'dataset'):
 		detect_from_dataset(model, args['file'])
 	else:
-		print('Unknown source type. Valid options: video, data')
+		print('Unknown source type. Valid options: webcam, video, dataset')
 
 if __name__ == '__main__':
 	main()
