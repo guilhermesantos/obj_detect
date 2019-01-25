@@ -211,27 +211,93 @@ def count_objects(model, objects):
 			obj_count[cat] += 1
 		else:
 			obj_count[cat] = 1
-	print(obj_count)
 
 	return obj_count
 
-def accumulate_counts(obj_counts):
+def get_counts_since_beginning(obj_counts):
 	total_count = dict()
 
-	for counts in obj_counts:
-		for key in counts.keys():
-			if(key in total_count.keys()):
-				total_count[key] += counts[key]
+	for time, objs in obj_counts.items():
+		for obj in objs.items():
+			cat = obj[0]
+			if(cat in list(total_count.keys())):
+				total_count[cat] += obj[1]
 			else:
-				total_count[key] = counts[key]
+				total_count[cat] = obj[1]
 
 	return total_count
 
+def plot_detection_series(obj_count_per_time, num_objects, fig=None, axis=None, lines=[]):
+	result = get_counts_since_beginning(obj_count_per_time)
+	sorted_result = sorted(result.items(), key=operator.itemgetter(1))
+
+	num_intervals = len(obj_count_per_time.keys())
+	interval_size = int(len(obj_count_per_time.keys())/num_intervals)
+
+	count_series = np.zeros(shape=(num_objects, num_intervals), dtype=np.int32)
+	most_frequent = sorted_result[-1:-num_objects-1:-1]
+
+	for obj_index, (obj, count) in enumerate(most_frequent):
+		for i, time_index in enumerate(obj_count_per_time.keys()):
+			if(obj in obj_count_per_time[time_index]):
+				count_series[obj_index, i] = obj_count_per_time[time_index][obj]
+
+			else:
+				count_series[obj_index, i] = 0
+
+	x = list(obj_count_per_time.keys())
+	if(len(lines) == 0):
+		fig, axis = plt.subplots(1, 2, figsize=(15, 10))
+		axis[0].bar(list(result.keys()), list(result.values()), color='g')
+		axis[0].set_title('Total de objetos detectados por categoria')
+
+		for i in range(0, count_series.shape[0]):
+			lines.append(axis[1].plot(x, count_series[i,:], label=most_frequent[i][0])[0])
+			axis[1].set_ylim(bottom=0, top=40)
+			axis[1].set_title('Evolução temporal dos {} objetos mais frequentes'.format(num_objects))
+			axis[1].legend()
+	else:
+		cur_max_val = count_series.max()
+		axis[0].bar(list(result.keys()), list(result.values()), color='g')
+		axis[0].set_title('Total de objetos detectados por categoria')
+		for i in range(0, count_series.shape[0]):
+			lines[i].set_xdata(x)
+			lines[i].set_ydata(count_series[i,:])
+			axis[1].set_title('Evolução temporal dos {} objetos mais frequentes'.format(num_objects))
+			axis[1].set_ylim(bottom=0, top=40)
+			axis[1].set_xlim(left=1, right=x[-1])
+
+	plt.draw()
+	plt.pause(0.001)
+	return fig, axis, lines
+
+def get_obj_count_for_current_time(model, objects, starting_time, last_rec_time, obj_count_per_time):
+	cur_time = time.time()
+	if(cur_time-last_rec_time >= 1):
+		video_time = int(cur_time-starting_time)
+		obj_count_per_time[video_time] = (count_objects(model, objects))
+		last_rec_time = time.time()
+		print('count at time {}:'.format(video_time), obj_count_per_time[list(obj_count_per_time.keys())[-1]])
+
+	return starting_time, last_rec_time, obj_count_per_time
+
+def draw_special_detection_region(image, start_x, start_y, end_x, end_y):
+	cv2.rectangle(image, (int(start_x), int(start_y)), (int(end_x), int(end_y)), (0,0,255), -1)
+	return image
 
 def detect_from_video(model, video_file=None):
+	plt.ion()
+	fig = None
+	axis = None
+	lines = []
+
 	starting_time = time.time()
 	cur_time = time.time()
 	last_rec_time = time.time()
+
+	time_measurements = []
+	detections = []
+	obj_count_per_time = dict()
 
 	if(video_file == None):
 		capture = cv2.VideoCapture(0)
@@ -239,10 +305,6 @@ def detect_from_video(model, video_file=None):
 	else:
 		capture = cv2.VideoCapture(video_file)
 		test_name = 'video_file'
-
-	time_measurements = []
-	detections = []
-	obj_count_per_time = []
 
 	while(capture.isOpened()):
 		ret, image = capture.read()
@@ -252,50 +314,21 @@ def detect_from_video(model, video_file=None):
 		for detection in objects:
 			detections.append(detection)
 
-		cur_time = time.time()
-		if(cur_time-last_rec_time >= 1):
-			video_time = int(cur_time-starting_time)
-			obj_count_per_time.append(count_objects(model, objects))
-			last_rec_time = time.time()
-			print('count at time {}:'.format(video_time), obj_count_per_time[-1])
+		starting_time, last_rec_time, obj_count_per_time = get_obj_count_for_current_time(model, objects, starting_time, 				last_rec_time, obj_count_per_time)
+
+
 
 		draw_boxes(model, image, objects)
 		image = cv2.resize(image, (1000,500))
+		image = draw_special_detection_region(image, 500, 250, 400, 100)
+
 		cv2.imshow('Detection', image)
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
 		if(len(time_measurements) % 30 == 0):
-			print('Recordings:', len(time_measurements))
-
-			result = accumulate_counts(obj_count_per_time)
-			sorted_result = sorted(result.items(), key=operator.itemgetter(1))
-
-			print('result', result)
-			print('sorted result', sorted_result)
-			print('objetos mais frequentes', [item[0] for item in sorted_result[-1:-4:-1]])
-			print('numero de contagens feitas', len(obj_count_per_time))
-			num_series = 3
-			num_intervals = 4
-			interval_size = int(len(obj_count_per_time)/num_intervals)
-			print('tamanho de cada intervalo', interval_size)
-
-			count_series = np.zeros(shape=(num_series, num_intervals), dtype=np.int32)
-			most_frequent = sorted_result[-1:-4:-1]
-
-			print('series example',[time[most_frequent[object_index][0]] if most_frequent[object_index][0] in time else 0 for time 					in  obj_count_per_time[0::interval_size] for object_index in range(num_series)])
-			for obj, count in  most_frequent:
-				print('obj', obj, 'count', count)
-				for i in range(0, len(obj_count_per_time), interval_size):
-					print('i', i)
-					if(obj in obj_count_per_time[i]):
-						print('count at time i', obj_count_per_time[i][obj])
-					else:
-						print('count at time i', 0)
-			fig, axis = plt.subplots(1, 2)
-			axis[0].bar(list(result.keys()), list(result.values()), color='g')
-			plt.show()
-
+			#print('Recordings:', len(time_measurements))
+			fig, axis, lines = plot_detection_series(obj_count_per_time, 4, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
