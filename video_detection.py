@@ -60,7 +60,7 @@ def load_net(model_id):
 
 	return model
 
-def parse_detections(image, predictions, image_id=None):
+def detections_to_dictionary(image, predictions, image_id=None):
 	objects = []
 	conf_thresh = 0.2
 	h, w = image.shape[:2]
@@ -115,7 +115,7 @@ def detect(model, image, image_id=None):
 
 	time_elapsed = end-start
 	
-	objects = parse_detections(image, detections, image_id)
+	objects = detections_to_dictionary(image, detections, image_id)
 
 	return objects, time_elapsed
 
@@ -203,7 +203,7 @@ def record_test_output(model, time_measurements, detections, test_name):
 	if(test_name == 'dataset'):
 		record_coco_output(model, test_name)
 
-def count_objects(model, objects):
+def count_objects_in_detection(model, objects):
 	obj_count = dict()
 	for detection in objects:
 		cat = model['classes'][detection['category_id']-1]
@@ -214,85 +214,128 @@ def count_objects(model, objects):
 
 	return obj_count
 
-def get_counts_since_beginning(obj_counts):
-	total_count = dict()
-
-	for time, objs in obj_counts.items():
-		for obj in objs.items():
-			cat = obj[0]
+def get_total_counts_per_object(obj_count_per_time, prev_caculated_total=None):
+	if(prev_caculated_total == None):
+		total_count = dict()
+		for time, objs in obj_count_per_time.items():
+			for obj in objs.items():
+				cat = obj[0]
+				if(cat in list(total_count.keys())):
+					total_count[cat] += obj[1]
+				else:
+					total_count[cat] = obj[1]
+	else:
+		total_count = prev_caculated_total
+		last_count_time = list(obj_count_per_time.keys())[-1]#checar
+		for cat in obj_count_per_time[last_count_time]:
 			if(cat in list(total_count.keys())):
-				total_count[cat] += obj[1]
+				total_count[cat] += obj_count_per_time[last_count_time][cat]
 			else:
-				total_count[cat] = obj[1]
+				total_count[cat] = obj_count_per_time[last_count_time][cat]
 
 	return total_count
 
-def plot_detection_series(obj_count_per_time, num_objects, fig=None, axis=None, lines=[]):
-	result = get_counts_since_beginning(obj_count_per_time)
-	sorted_result = sorted(result.items(), key=operator.itemgetter(1))
+def get_most_frequent_object_names(total_counts_per_object, num_objects):
+	if(num_objects > len(list(total_counts_per_object.keys()))):
+		num_objects = len(list(total_counts_per_object.keys()))
+	sorted_total_counts = sorted(total_counts_per_object.items(), key=operator.itemgetter(1))
+	most_frequent = sorted_total_counts[-1:-num_objects-1:-1]
+	most_frequent_names = [name_count_tuple[0] for name_count_tuple in most_frequent]
+	return most_frequent_names
 
+def get_detection_time_series(obj_count_per_time, obj_names):
 	num_intervals = len(obj_count_per_time.keys())
-	interval_size = int(len(obj_count_per_time.keys())/num_intervals)
+	num_objects = len(obj_names)
+	time_series = np.zeros(shape=(num_objects, num_intervals), dtype=np.int32)
 
-	count_series = np.zeros(shape=(num_objects, num_intervals), dtype=np.int32)
-	most_frequent = sorted_result[-1:-num_objects-1:-1]
-
-	for obj_index, (obj, count) in enumerate(most_frequent):
+	for obj_index, obj in enumerate(obj_names):
 		for i, time_index in enumerate(obj_count_per_time.keys()):
 			if(obj in obj_count_per_time[time_index]):
-				count_series[obj_index, i] = obj_count_per_time[time_index][obj]
-
+				time_series[obj_index, i] = obj_count_per_time[time_index][obj]
 			else:
-				count_series[obj_index, i] = 0
+				time_series[obj_index, i] = 0
+		
+	return time_series
 
-	x = list(obj_count_per_time.keys())
-	if(len(lines) == 0):
+def plot_detection_histogram(total_counts_per_object, fig, axis):
+	if(fig == None):
+		plt.ion()
 		fig, axis = plt.subplots(1, 2, figsize=(15, 10))
-		axis[0].bar(list(result.keys()), list(result.values()), color='g')
-		axis[0].set_title('Total de objetos detectados por categoria')
 
-		for i in range(0, count_series.shape[0]):
-			lines.append(axis[1].plot(x, count_series[i,:], label=most_frequent[i][0])[0])
-			axis[1].set_ylim(bottom=0, top=40)
-			axis[1].set_title('Evolução temporal dos {} objetos mais frequentes'.format(num_objects))
+	axis[0].bar(list(total_counts_per_object.keys()), list(total_counts_per_object.values()), color='g')
+	axis[0].set_title('Total de objetos detectados por categoria')	
+	return fig, axis
+
+def plot_detection_series(object_names, time_series, detection_times, fig=None, axis=None, lines=[]):
+	num_objects = len(object_names)
+	x = detection_times
+	if(fig == None):
+		plt.ion()
+		fig, axis = plt.subplots(1, 2, figsize=(15, 10))
+
+	if(len(lines) == 0):
+		for i in range(0, time_series.shape[0]):
+			lines.append(axis[1].plot(x, time_series[i,:], label=object_names[i])[0])
+			axis[1].set_ylim(bottom=time_series.min(), top=time_series.max())
+			axis[1].set_xlim(left=x[0], right=x[-1])
+			axis[1].set_title('Detecção dos {} objetos mais frequentes: evolução temporal'.format(num_objects))
 			axis[1].legend()
+
 	else:
-		cur_max_val = count_series.max()
-		axis[0].bar(list(result.keys()), list(result.values()), color='g')
-		axis[0].set_title('Total de objetos detectados por categoria')
-		for i in range(0, count_series.shape[0]):
+		for i in range(0, time_series.shape[0]):
 			lines[i].set_xdata(x)
-			lines[i].set_ydata(count_series[i,:])
-			axis[1].set_title('Evolução temporal dos {} objetos mais frequentes'.format(num_objects))
-			axis[1].set_ylim(bottom=0, top=40)
-			axis[1].set_xlim(left=1, right=x[-1])
+			lines[i].set_ydata(time_series[i,:])
+			axis[1].set_title('Detecção dos {} objetos mais frequentes: evolução temporal'.format(num_objects))
+			axis[1].set_ylim(bottom=time_series.min(), top=time_series.max())
+			axis[1].set_xlim(left=x[0], right=x[-1])
 
 	plt.draw()
 	plt.pause(0.001)
 	return fig, axis, lines
 
-def get_obj_count_for_current_time(model, objects, starting_time, last_rec_time, obj_count_per_time):
+def get_obj_count_for_current_time(model, detection, starting_time, last_rec_time, obj_count_per_time):
 	cur_time = time.time()
 	if(cur_time-last_rec_time >= 1):
 		video_time = int(cur_time-starting_time)
-		obj_count_per_time[video_time] = (count_objects(model, objects))
+		obj_count_per_time[video_time] = count_objects_in_detection(model, detection)
 		last_rec_time = time.time()
-		#print('count at time {}:'.format(video_time), obj_count_per_time[list(obj_count_per_time.keys())[-1]])
 
 	return starting_time, last_rec_time, obj_count_per_time
 
-#def count_objects_in_special_region(region, objects)
+def detect_objects_in_region(image, detections, starting_point, ending_point):
+	reg_x0, reg_y0 = starting_point
+	reg_w = ending_point[0]-reg_x0
+	reg_h = ending_point[1]-reg_y0
+	num_collisions = 0
 
+	for detection in detections:
+		obj_x0, obj_y0, obj_w, obj_h = detection['bbox']
+		if(obj_x0 < reg_x0 +reg_w and 
+			obj_x0 + obj_w > reg_x0 and
+			obj_y0 < reg_y0 + reg_h and
+			obj_y0 + obj_h > reg_y0):
+			
+			print('obj x0', obj_x0, 'obj y0', obj_y0, 'obj w', obj_w, 'obj h', obj_h)
+			rect_coords = (int(obj_x0), int(obj_y0)),(int(obj_x0+obj_w), int(obj_y0+obj_h))
+			print('obj coords', obj_x0, obj_y0, obj_x0+obj_w, obj_y0+obj_h)
+			print('rect coords', rect_coords)
+			cv2.rectangle(image, *rect_coords, (255,255,255), thickness=5)
+
+			num_collisions += 1
+
+	print('number of detected collisions', num_collisions)
+	return image
+		
 
 def detect_from_video(model, video_file=None):
-	plt.ion()
 	fig = None
 	axis = None
 	lines = []
+	total_counts_per_object = None
 
 	starting_time = time.time()
 	cur_time = time.time()
-	last_rec_time = time.time()
+	last_count_time = time.time()
 
 	time_measurements = []
 	detections = []
@@ -313,23 +356,29 @@ def detect_from_video(model, video_file=None):
 		for detection in objects:
 			detections.append(detection)
 
-		starting_time, last_rec_time, obj_count_per_time = get_obj_count_for_current_time(model, objects, starting_time, 				last_rec_time, obj_count_per_time)
-
-
-		region = ((400, 200), (600, 300))
+		starting_time, last_count_time, obj_count_per_time = get_obj_count_for_current_time(model, objects, starting_time, 
+			last_count_time, obj_count_per_time)
 
 		draw_boxes(model, image, objects)
+		region = ((400, 200), (600, 300))
+		cv2.rectangle(image, *region, (255,255,0), 5)
+		detect_objects_in_region(image, objects, *region)
+		
 		image = cv2.resize(image, (1000,500))
 	
-		cv2.rectangle(image, *region, (0,0,0), -1)
 
 		cv2.imshow('Detection', image)
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
-		if(len(time_measurements) % 30 == 0):
-			#print('Recordings:', len(time_measurements))
-			fig, axis, lines = plot_detection_series(obj_count_per_time, 4, fig, axis, lines)
+		if(len(time_measurements) % 20 == 0):
+			detection_times = list(obj_count_per_time.keys())
+			total_counts_per_object = get_total_counts_per_object(obj_count_per_time, total_counts_per_object)
+			#fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
+			
+			most_frequent_object_names = get_most_frequent_object_names(total_counts_per_object, 4)
+			most_frequent_time_series = get_detection_time_series(obj_count_per_time, most_frequent_object_names)
+			#fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
@@ -368,11 +417,8 @@ def detect_from_dataset(model, folder):
 def parse_commandline():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-m', dest='model', type=int, required=False, help='Specify model')
-	
 	parser.add_argument('-s', dest='source', required=False, help='Specify source type')
-
 	parser.add_argument('-f', dest='file', required=False, help='Specify input file')
-
 	args = vars(parser.parse_args())
 	return args
 
