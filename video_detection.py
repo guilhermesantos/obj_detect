@@ -273,29 +273,13 @@ def plot_detection_series(object_names, time_series, detection_times, fig=None, 
 		plt.ion()
 		fig, axis = plt.subplots(1, 2, figsize=(15, 10))
 
-	if(len(lines) == 0):
-		for i in range(0, time_series.shape[0]):
-			lines.append(axis[1].plot(x, time_series[i,:], label=object_names[i])[0])
-			axis[1].set_ylim(bottom=time_series.min(), top=time_series.max())
-			axis[1].set_xlim(left=x[0], right=x[-1])
-			axis[1].set_title('Detecção dos {} objetos mais frequentes: evolução temporal'.format(num_objects))
-			axis[1].legend()
-
-	else:
-		axis[1].lines.clear()
-		for i in range(0, time_series.shape[0]):
-			#if(i < len(lines)):
-			#	lines[i].set_xdata(x)
-			#	lines[i].set_ydata(time_series[i,:])
-			#else:
-			#	lines.append(axis[1].plot(x, time_series[i, :],label=object_names[i])[0])
-
-			
-			lines.append(axis[1].plot(x, time_series[i, :],label=object_names[i])[0])
-			axis[1].set_title('Detecção dos {} objetos mais frequentes: evolução temporal'.format(num_objects))
-			axis[1].set_ylim(bottom=time_series.min(), top=time_series.max())
-			axis[1].set_xlim(left=x[0], right=x[-1])
-			axis[1].legend()
+	axis[1].lines.clear()
+	for i in range(0, time_series.shape[0]):
+		axis[1].plot(x, time_series[i,:],label=object_names[i])
+		axis[1].set_title('Detecção dos {} objetos mais frequentes: evolução temporal'.format(num_objects))
+		axis[1].set_ylim(bottom=time_series.min(), top=time_series.max())
+		axis[1].set_xlim(left=x[0], right=x[-1])
+		axis[1].legend()
 
 	plt.draw()
 	plt.pause(0.001)
@@ -331,9 +315,8 @@ def detect_objects_in_region(image, detections, starting_point, ending_point):
 
 
 	print('number of detected collisions', num_collisions)
-	return image, categories_detected
+	return categories_detected
 		
-
 def detect_from_video(model, video_file=None):
 	fig = None
 	axis = None
@@ -370,8 +353,26 @@ def detect_from_video(model, video_file=None):
 
 		region = ((400, 200), (600, 300))
 		cv2.rectangle(image, *region, (255,255,0), 5)
-		detect_objects_in_region(image, objects, *region)
-		
+		cats_in_region = detect_objects_in_region(image, objects, *region)
+
+		cat_count = dict()
+		for cat in cats_in_region:
+			if(cat in cat_count):
+				cat_count[cat] += 1
+			else:
+				cat_count[cat] = 1
+
+		region_text = ''
+		for i, cat in enumerate(list(cat_count.keys())):
+			region_text += model['classes'][cat-1]+':'+str(cat_count[cat])
+			if(i > 0 and i < len(list(cat_count.keys())))-1:
+				print('colocando virgula')
+				region_text += ','
+
+		cv2.putText(image, region_text, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, 
+	            	(255, 255, 0), 10)
+
+
 		image = cv2.resize(image, (1000,500))
 		cv2.imshow('Detection', image)
 
@@ -380,11 +381,11 @@ def detect_from_video(model, video_file=None):
 		if(len(time_measurements) % 20 == 0):
 			detection_times = list(obj_count_per_time.keys())
 			total_counts_per_object = get_total_counts_per_object(obj_count_per_time, total_counts_per_object)
-			fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
+			#fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
 			
 			most_frequent_object_names = get_most_frequent_object_names(total_counts_per_object, 4)
 			most_frequent_time_series = get_detection_time_series(obj_count_per_time, most_frequent_object_names)
-			fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
+			#fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
