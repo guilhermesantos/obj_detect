@@ -282,12 +282,20 @@ def plot_detection_series(object_names, time_series, detection_times, fig=None, 
 			axis[1].legend()
 
 	else:
+		axis[1].lines.clear()
 		for i in range(0, time_series.shape[0]):
-			lines[i].set_xdata(x)
-			lines[i].set_ydata(time_series[i,:])
+			#if(i < len(lines)):
+			#	lines[i].set_xdata(x)
+			#	lines[i].set_ydata(time_series[i,:])
+			#else:
+			#	lines.append(axis[1].plot(x, time_series[i, :],label=object_names[i])[0])
+
+			
+			lines.append(axis[1].plot(x, time_series[i, :],label=object_names[i])[0])
 			axis[1].set_title('Detecção dos {} objetos mais frequentes: evolução temporal'.format(num_objects))
 			axis[1].set_ylim(bottom=time_series.min(), top=time_series.max())
 			axis[1].set_xlim(left=x[0], right=x[-1])
+			axis[1].legend()
 
 	plt.draw()
 	plt.pause(0.001)
@@ -308,6 +316,7 @@ def detect_objects_in_region(image, detections, starting_point, ending_point):
 	reg_h = ending_point[1]-reg_y0
 	num_collisions = 0
 
+	categories_detected = []
 	for detection in detections:
 		obj_x0, obj_y0, obj_w, obj_h = detection['bbox']
 		if(obj_x0 < reg_x0 +reg_w and 
@@ -315,16 +324,14 @@ def detect_objects_in_region(image, detections, starting_point, ending_point):
 			obj_y0 < reg_y0 + reg_h and
 			obj_y0 + obj_h > reg_y0):
 			
-			print('obj x0', obj_x0, 'obj y0', obj_y0, 'obj w', obj_w, 'obj h', obj_h)
 			rect_coords = (int(obj_x0), int(obj_y0)),(int(obj_x0+obj_w), int(obj_y0+obj_h))
-			print('obj coords', obj_x0, obj_y0, obj_x0+obj_w, obj_y0+obj_h)
-			print('rect coords', rect_coords)
 			cv2.rectangle(image, *rect_coords, (255,255,255), thickness=5)
-
 			num_collisions += 1
+			categories_detected.append(detection['category_id'])
+
 
 	print('number of detected collisions', num_collisions)
-	return image
+	return image, categories_detected
 		
 
 def detect_from_video(model, video_file=None):
@@ -360,13 +367,12 @@ def detect_from_video(model, video_file=None):
 			last_count_time, obj_count_per_time)
 
 		draw_boxes(model, image, objects)
+
 		region = ((400, 200), (600, 300))
 		cv2.rectangle(image, *region, (255,255,0), 5)
 		detect_objects_in_region(image, objects, *region)
 		
 		image = cv2.resize(image, (1000,500))
-	
-
 		cv2.imshow('Detection', image)
 
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
@@ -374,11 +380,11 @@ def detect_from_video(model, video_file=None):
 		if(len(time_measurements) % 20 == 0):
 			detection_times = list(obj_count_per_time.keys())
 			total_counts_per_object = get_total_counts_per_object(obj_count_per_time, total_counts_per_object)
-			#fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
+			fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
 			
 			most_frequent_object_names = get_most_frequent_object_names(total_counts_per_object, 4)
 			most_frequent_time_series = get_detection_time_series(obj_count_per_time, most_frequent_object_names)
-			#fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
+			fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
