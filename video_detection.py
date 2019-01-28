@@ -381,11 +381,11 @@ def detect_from_video(model, video_file=None):
 		if(len(time_measurements) % 20 == 0):
 			detection_times = list(obj_count_per_time.keys())
 			total_counts_per_object = get_total_counts_per_object(obj_count_per_time, total_counts_per_object)
-			#fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
+			fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
 			
 			most_frequent_object_names = get_most_frequent_object_names(total_counts_per_object, 4)
 			most_frequent_time_series = get_detection_time_series(obj_count_per_time, most_frequent_object_names)
-			#fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
+			fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
