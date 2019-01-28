@@ -364,10 +364,10 @@ def detect_from_video(model, video_file=None):
 
 		region_text = ''
 		for i, cat in enumerate(list(cat_count.keys())):
+			if(i > 0):
+				region_text += ', '
 			region_text += model['classes'][cat-1]+':'+str(cat_count[cat])
-			if(i > 0 and i < len(list(cat_count.keys())))-1:
-				print('colocando virgula')
-				region_text += ','
+
 
 		cv2.putText(image, region_text, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, 
 	            	(255, 255, 0), 10)
