@@ -330,6 +330,7 @@ def detect_from_video(model, video_file=None):
 	time_measurements = []
 	detections = []
 	obj_count_per_time = dict()
+	frame_number = 0
 
 	if(video_file == None):
 		capture = cv2.VideoCapture(0)
@@ -351,7 +352,7 @@ def detect_from_video(model, video_file=None):
 
 		draw_boxes(model, image, objects)
 
-		region = ((400, 200), (600, 300))
+		'''region = ((400, 200), (600, 300))
 		cv2.rectangle(image, *region, (255,255,0), 5)
 		cats_in_region = detect_objects_in_region(image, objects, *region)
 
@@ -370,26 +371,33 @@ def detect_from_video(model, video_file=None):
 
 
 		cv2.putText(image, region_text, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, 
-	            	(255, 255, 0), 10)
+	            	(255, 255, 0), 10)'''
 
 
 		image = cv2.resize(image, (1000,500))
 		cv2.imshow('Detection', image)
 
+		if(frame_number == 50):
+			image_name = 'charts/img_{}_{}.png'.format(model['name'], test_name)
+			print(image_name)
+			cv2.imwrite(image_name, image)
+
 		if(cv2.waitKey(1) & 0xFF == ord('q')):
 			break
+
 		if(len(time_measurements) % 20 == 0):
 			detection_times = list(obj_count_per_time.keys())
 			total_counts_per_object = get_total_counts_per_object(obj_count_per_time, total_counts_per_object)
-			fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
+			#fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
 			
 			most_frequent_object_names = get_most_frequent_object_names(total_counts_per_object, 4)
 			most_frequent_time_series = get_detection_time_series(obj_count_per_time, most_frequent_object_names)
-			fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
+			#fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
 			break
+		frame_number += 1
 
 	capture.release()
 	cv2.destroyAllWindows()	
