@@ -314,9 +314,31 @@ def detect_objects_in_region(image, detections, starting_point, ending_point):
 			categories_detected.append(detection['category_id'])
 
 
-	print('number of detected collisions', num_collisions)
+	#print('number of detected collisions', num_collisions)
 	return categories_detected
 		
+def show_objects_inside_region(model, image, objects, p1, p2):
+	region = (p1, p2)
+	cv2.rectangle(image, *region, (255,255,0), 5)
+	cats_in_region = detect_objects_in_region(image, objects, *region)
+
+	cat_count = dict()
+	for cat in cats_in_region:
+		if(cat in cat_count):
+			cat_count[cat] += 1
+		else:
+			cat_count[cat] = 1
+
+	region_text = ''
+	for i, cat in enumerate(list(cat_count.keys())):
+		if(i > 0):
+			region_text += ', '
+		region_text += model['classes'][cat-1]+':'+str(cat_count[cat])
+
+
+	cv2.putText(image, region_text, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, 
+	    	(255, 255, 0), 10)
+
 def detect_from_video(model, video_file=None):
 	fig = None
 	axis = None
@@ -352,27 +374,7 @@ def detect_from_video(model, video_file=None):
 
 		draw_boxes(model, image, objects)
 
-		'''region = ((400, 200), (600, 300))
-		cv2.rectangle(image, *region, (255,255,0), 5)
-		cats_in_region = detect_objects_in_region(image, objects, *region)
-
-		cat_count = dict()
-		for cat in cats_in_region:
-			if(cat in cat_count):
-				cat_count[cat] += 1
-			else:
-				cat_count[cat] = 1
-
-		region_text = ''
-		for i, cat in enumerate(list(cat_count.keys())):
-			if(i > 0):
-				region_text += ', '
-			region_text += model['classes'][cat-1]+':'+str(cat_count[cat])
-
-
-		cv2.putText(image, region_text, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, 
-	            	(255, 255, 0), 10)'''
-
+		show_objects_inside_region(model, image, objects, (400, 200), (600, 300))
 
 		image = cv2.resize(image, (1000,500))
 		cv2.imshow('Detection', image)
