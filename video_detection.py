@@ -11,6 +11,7 @@ from functools import reduce
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
+#Carrega labels do coco a partir do arquivo "./labels.txt"
 def load_coco_classes():
 	classes = []
 	with open('labels.txt') as f:
@@ -20,6 +21,8 @@ def load_coco_classes():
 		classes = [line[2] for line in split_rows]
 	return classes
 
+#Carrega um modelo de deteccao de objetos a partir do diretorio './models/object-detection-deep-learning'
+#Monta com ele um dicionario que encapsula as informacoes do modelo, que e entao utilizado pelo resto do script
 def load_net(model_id):
 	directory = 'models/object-detection-deep-learning/'
 
@@ -60,6 +63,8 @@ def load_net(model_id):
 
 	return model
 
+#Itera sobre as deteccoes retornadas pela inferencia e monta um dicionario no formato esperado pelo COCOeval
+#para aquelas que tem confianca maior que 20%
 def detections_to_dictionary(image, predictions, image_id=None):
 	objects = []
 	conf_thresh = 0.2
@@ -99,6 +104,7 @@ def detections_to_dictionary(image, predictions, image_id=None):
 
 	return objects
 
+#Realiza inferencia (deteccao de objetos) sobre uma imagem, seja ela frame de um video ou imagem estatica
 def detect(model, image, image_id=None):
 	model_id = model['id']
 	net = model['net']
@@ -119,6 +125,7 @@ def detect(model, image, image_id=None):
 
 	return objects, time_elapsed
 
+#Desenha sobre a imagem as bounding boxes dos objetos detectados
 def draw_boxes(model, image, objects):
 	#Desenha um retangulo na regiao da bounding box
 	for detected in objects:
@@ -147,6 +154,10 @@ def draw_boxes(model, image, objects):
 
 	return image
 
+#Grava o tempo de cada inferencia em um arquivo de saida. O caminho do arquivo segue o padrao 
+#./benchmark/time_{0}_{1}.dat, em que {0} denota o nome do model otestado e {1} o nome do teste realizado 
+#(webcam, video ou dataset). 
+#obs: o script nao checa se a pasta benchmark existe, entao eh possivel que ocorra erro se nao existir
 def record_time(model, time_measurements, test_name):
 	measure_file = 'benchmark/time_{}_{}.dat'.format(model['name'], test_name)
 	print('{} measurements collected'.format(len(time_measurements)))
@@ -162,6 +173,10 @@ def record_time(model, time_measurements, test_name):
 	with open(measure_file, 'w') as f:
 		f.write(content)
 
+#Grava as deteccoes realizadas em um arquivo no formato esperado pelo COCOeval. O caminho do arquivo segue o padrao
+#./benchmark/detections_{0}_{1}.dat, em que {0} denota o nome do model otestado e {1} o nome do teste realizado 
+#(webcam, video ou dataset). 
+#obs: o script nao checa se a pasta benchmark existe, entao eh possivel que ocorra erro se nao existir
 def record_detections(model, detections, test_name):
 	detection_file = './benchmark/detections_{}_{}.json'.format(model['name'], test_name)
 	if(os.path.exists(detection_file)):
@@ -171,7 +186,9 @@ def record_detections(model, detections, test_name):
 		print('Dumping detection results to', detection_file)
 		json.dump(detections, f)
 
-
+#Grava a saida do COCOeval em um arquivo de saida. O caminho do arquivo segue o padrao ./benchmark/coco_{0}_{1}.dat,
+#em que {0} denota o nome do modelo testado e {1} o nome do teste realizado (webcam, video ou dataset)
+#obs: o script nao checa se a pasta benchmark existe, entao eh possivel que ocorra erro se nao existir
 def record_coco_output(model, test_name):
 	detection_file = 'benchmark/detections_{}_{}.json'.format(model['name'], test_name)
 	coco_out_file = 'benchmark/coco_{}_{}.dat'.format(model['name'], test_name)
@@ -197,12 +214,16 @@ def record_coco_output(model, test_name):
 	with open(coco_out_file, 'wt') as f:
 		f.write(out)
 
+#Grava os resultados do teste, tanto os tempos de inferencia quanto as deteccoes,
+#em arquivos de saida. No caso de deteccao de objetos em dataset, tambem grava a saida do
+#COCOeval em um arquivo proprio para utilizacao em relatorio
 def record_test_output(model, time_measurements, detections, test_name):
 	record_time(model, time_measurements, test_name)
 	record_detections(model, detections, test_name)
 	if(test_name == 'dataset'):
 		record_coco_output(model, test_name)
 
+#Faz a contagem do numero de objetos por classe em um único frame da imagem
 def count_objects_in_detection(model, objects):
 	obj_count = dict()
 	for detection in objects:
@@ -214,6 +235,9 @@ def count_objects_in_detection(model, objects):
 
 	return obj_count
 
+#Atualiza a quantidade de observacoes realizadas para objetos de todas as classes desde o inicio do tempo
+#se prev_calculated_total for none, assume que a contagem acabou de comecar. caso contrario,
+#so atualiza os valores ao inves de calcular desde o comeco
 def get_total_counts_per_object(obj_count_per_time, prev_caculated_total=None):
 	if(prev_caculated_total == None):
 		total_count = dict()
@@ -235,6 +259,7 @@ def get_total_counts_per_object(obj_count_per_time, prev_caculated_total=None):
 
 	return total_count
 
+#Calcula x objetos detectados com maior frequencia em toda a imagem desde o inicio do tempo, sendo x especificado em num_objects
 def get_most_frequent_object_names(total_counts_per_object, num_objects):
 	if(num_objects > len(list(total_counts_per_object.keys()))):
 		num_objects = len(list(total_counts_per_object.keys()))
@@ -243,6 +268,8 @@ def get_most_frequent_object_names(total_counts_per_object, num_objects):
 	most_frequent_names = [name_count_tuple[0] for name_count_tuple in most_frequent]
 	return most_frequent_names
 
+#monta a serie temporal da quantidade de objetos detectados por unidade de tempo, para as classes especificadas
+#em obj_names
 def get_detection_time_series(obj_count_per_time, obj_names):
 	num_intervals = len(obj_count_per_time.keys())
 	num_objects = len(obj_names)
@@ -257,6 +284,7 @@ def get_detection_time_series(obj_count_per_time, obj_names):
 		
 	return time_series
 
+#plota histograma de todos os objetos detectados na imagem desde o comeco da execucao do script
 def plot_detection_histogram(total_counts_per_object, fig, axis):
 	if(fig == None):
 		plt.ion()
@@ -266,6 +294,7 @@ def plot_detection_histogram(total_counts_per_object, fig, axis):
 	axis[0].set_title('Total de objetos detectados por categoria')	
 	return fig, axis
 
+#plota a evolucao temporal da quantidade de objetos detectados sobre toda a imagem organizados por classe
 def plot_detection_series(object_names, time_series, detection_times, fig=None, axis=None, lines=[]):
 	num_objects = len(object_names)
 	x = detection_times
@@ -285,6 +314,7 @@ def plot_detection_series(object_names, time_series, detection_times, fig=None, 
 	plt.pause(0.001)
 	return fig, axis, lines
 
+#Conta os objetos detectados sobre toda a imagem organizados por classe
 def get_obj_count_for_current_time(model, detection, starting_time, last_rec_time, obj_count_per_time):
 	cur_time = time.time()
 	if(cur_time-last_rec_time >= 1):
@@ -294,6 +324,7 @@ def get_obj_count_for_current_time(model, detection, starting_time, last_rec_tim
 
 	return starting_time, last_rec_time, obj_count_per_time
 
+#Faz a contagem da quantidade de objetos detectados na regiao especificada, organizados por classe
 def detect_objects_in_region(image, detections, starting_point, ending_point):
 	reg_x0, reg_y0 = starting_point
 	reg_w = ending_point[0]-reg_x0
@@ -317,6 +348,7 @@ def detect_objects_in_region(image, detections, starting_point, ending_point):
 	#print('number of detected collisions', num_collisions)
 	return categories_detected
 		
+#Desenha um retangulo na regiao especificada e escreve a quantidade de objetos detectados por classe
 def show_objects_inside_region(model, image, objects, p1, p2):
 	region = (p1, p2)
 	cv2.rectangle(image, *region, (255,255,0), 5)
@@ -339,6 +371,8 @@ def show_objects_inside_region(model, image, objects, p1, p2):
 	cv2.putText(image, region_text, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, 
 	    	(255, 255, 0), 10)
 
+#Loop para deteccao de objetos em video (tanto arquivo como webcam). ao final, grava as deteccoes
+#e tempo de cada inferencia em um arquivo de saida
 def detect_from_video(model, video_file=None):
 	fig = None
 	axis = None
@@ -390,11 +424,11 @@ def detect_from_video(model, video_file=None):
 		if(len(time_measurements) % 20 == 0):
 			detection_times = list(obj_count_per_time.keys())
 			total_counts_per_object = get_total_counts_per_object(obj_count_per_time, total_counts_per_object)
-			#fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
+			fig, axis = plot_detection_histogram(total_counts_per_object, fig, axis)
 			
 			most_frequent_object_names = get_most_frequent_object_names(total_counts_per_object, 4)
 			most_frequent_time_series = get_detection_time_series(obj_count_per_time, most_frequent_object_names)
-			#fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
+			fig, axis, lines = plot_detection_series(most_frequent_object_names, most_frequent_time_series, detection_times, fig, axis, lines)
 
 		if(len(time_measurements)  > 2000):
 			record_test_output(model, time_measurements, detections, test_name)
@@ -404,6 +438,8 @@ def detect_from_video(model, video_file=None):
 	capture.release()
 	cv2.destroyAllWindows()	
 
+#Loop para deteccao de objetos em um dataset de imagens estaticas. ao final, grava as deteccoes
+#e tempo de cada inferencia em um arquivo de saida
 def detect_from_dataset(model, folder):
 	if(folder == None):
 		print('Please specify the dataset folder')
@@ -430,7 +466,13 @@ def detect_from_dataset(model, folder):
 		
 		record_test_output(model, time_measurements, detections, 'dataset')
 
-
+#Interpreta argumentos da linha de comando
+#-s: "source" do vídeo. valores possíveis: webcam, dataset ou video
+#-f: caminho para a fonte do video. deve ser o caminho de uma pasta para o source "dataset" e para um arquivo 
+#de vídeo para o source "video". nao serve para nada para o source "webcam"
+#Obs: para o caso do dataset, o script espera um diretorio com 2 subpastas: "annotations" e "data"
+#-m: modelo que sera utilizado. valores possiveis: 1 (mobilenet ssd v1 Caffe), 2 (mobilenet ssd v1 tensorflow),
+#3 (mobilenet ssd v2 tensorflow)
 def parse_commandline():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-m', dest='model', type=int, required=False, help='Specify model')
